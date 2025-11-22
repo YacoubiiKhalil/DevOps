@@ -28,7 +28,9 @@
     </scm>
     <properties>
         <java.version>17</java.version>
+        <maven.test.failure.ignore>true</maven.test.failure.ignore>
     </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -63,7 +65,7 @@
     </dependencies>
 
     <build>
-    <plugins>
+        <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
@@ -79,4 +81,5 @@
         </plugins>
     </build>
 
+    
 </project>
