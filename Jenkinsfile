@@ -4,7 +4,7 @@ pipeline {
     stages {
         stage('Récupération Git') {
             steps {
-                git 'https://github.com/YacoubiiKhalil/jenkins.git'
+                git 'https://github.com/YacoubiiKhalil/DevOps.git'
             }
         }
         
