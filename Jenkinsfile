@@ -2,24 +2,23 @@ pipeline {
     agent any
     
     tools {
-        maven 'M3'  // Important: configurer Maven dans Jenkins
+        maven 'M3'  
     }
     
     stages {
         stage('Récupération Git') {
             steps {
-                git branch: 'main', 
-                url: 'https://github.com/YacoubiiKhalil/DevOps.git'
+                git branch: 'main', url: 'https://github.com/YacoubiiKhalil/DevOps.git'
             }
         }
         
-        stage('Lancement tests') {
+        stage('Tests') {
             steps {
                 sh 'mvn test'
             }
         }
         
-        stage('Création livrable') {
+        stage('Build') {
             steps {
                 sh 'mvn clean package'
             }
