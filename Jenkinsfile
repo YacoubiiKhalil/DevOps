@@ -2,7 +2,7 @@ pipeline {
     agent any
     
     tools {
-        maven 'M3'  
+        maven 'M3'
     }
     
     stages {
@@ -12,16 +12,23 @@ pipeline {
             }
         }
         
-        stage('Tests') {
+        stage('Build et Tests') {
             steps {
-                sh 'mvn test'
+                
+                sh 'mvn clean test'
             }
         }
         
-        stage('Build') {
+        stage('Package') {
             steps {
-                sh 'mvn clean package'
+                sh 'mvn package -DskipTests'
             }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Build terminé - tests ignorés si échec'
         }
     }
 }
