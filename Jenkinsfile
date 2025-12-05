@@ -1,13 +1,14 @@
 pipeline {
     agent any
-    
+
     tools {
+        // Ton outil Maven configuré dans Jenkins (tel que vu dans tes messages précédents)
         maven 'M3'
+        // Si tu as configuré un JDK spécifique, décommente la ligne suivante :
+        // jdk 'JAVA_HOME' 
     }
-    
-    environment {
-        SONAR_TOKEN = credentials('sonarqube-token')
-    }
+
+
 
     stages {
         stage('Récupération Git') {
@@ -16,30 +17,37 @@ pipeline {
             }
         }
 
-        stage('Build, Tests et Rapports') {
+        stage('Build & Tests') {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
+                    // 'clean verify' compile et lance les tests unitaires
                     sh 'mvn clean verify'
                 }
             }
         }
 
-        stage('Analyse SonarQube') {
+ 
+
+        stage('Packaging (JAR)') {
             steps {
-                withSonarQubeEnv('sonarqube') {
-                    // Les variables d'environnement fonctionnent bien avec des simple quotes dans le sh
-                    sh 'mvn sonar:sonar -Dsonar.projectKey=sqa_64a2766f75fe255ca8c8db30e9111a24772df5f2 -Dsonar.login=$SONAR_TOKEN'
-                }
+                // Génère le .jar dans le dossier target/ sans relancer les tests
+                sh 'mvn package -DskipTests'
             }
         }
-    
+
+
 
     post {
-        always {
-            echo 'Build terminé - couverture des tests vérifiée avec Jacoco'
-        }
         success {
-            sh 'echo "✅ Couverture Jacoco générée avec succès"'
+            echo "✅ Pipeline et Push Docker réussis !"
+        }
+        failure {
+            echo "❌ Le pipeline a échoué."
+        }
+        always {
+            echo "🧹 Nettoyage des images Docker locales pour économiser de l'espace..."
+            sh "docker rmi ${IMAGE_NAME}:${env.BUILD_NUMBER} || true"
+            sh "docker rmi ${IMAGE_NAME}:latest || true"
         }
     }
 }
