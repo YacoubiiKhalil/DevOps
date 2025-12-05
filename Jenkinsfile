@@ -1,8 +1,10 @@
 pipeline {
     agent any
+    
     tools {
         maven 'M3'
     }
+    
     environment {
         SONAR_TOKEN = credentials('sonarqube-token')
     }
@@ -17,7 +19,6 @@ pipeline {
         stage('Build, Tests et Rapports') {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
-
                     sh 'mvn clean verify'
                 }
             }
@@ -26,6 +27,7 @@ pipeline {
         stage('Analyse SonarQube') {
             steps {
                 withSonarQubeEnv('sonarqube') {
+                    // Les variables d'environnement fonctionnent bien avec des simple quotes dans le sh
                     sh 'mvn sonar:sonar -Dsonar.projectKey=sqa_64a2766f75fe255ca8c8db30e9111a24772df5f2 -Dsonar.login=$SONAR_TOKEN'
                 }
             }
