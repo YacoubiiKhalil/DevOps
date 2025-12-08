@@ -1,92 +1,108 @@
 pipeline {
     agent any
-
-    tools {
-        maven 'M3'
-    }
-
+    
     environment {
-        IMAGE_NAME = "yacoubikha/premiere-image"
-        SONAR_TOKEN = credentials('sonarqube-token')
-        SONAR_PROJECT_KEY = "sqa_64a2766f75fe255ca8c8db30e9111a24772df5f2"
+        DOCKER_IMAGE = 'yacoubikha/student-app'
+        SONAR_TOKEN = credentials('sonar-token')
     }
-
+    
     stages {
+        stage('Declarative: Tool Install') {
+            steps {
+                tool name: 'jdk17', type: 'jdk'
+                tool name: 'maven-3', type: 'maven'
+            }
+        }
+        
         stage('Récupération Git') {
             steps {
-                git branch: 'main', url: 'https://github.com/YacoubiiKhalil/DevOps.git'
+                git branch: 'main', 
+                    url: 'https://github.com/YacoubiiKhalil/DevOps.git'
             }
         }
-
+        
         stage('Build & Tests') {
             steps {
-                timeout(time: 10, unit: 'MINUTES') {
-                    sh 'mvn clean verify'
+                withEnv(["JAVA_HOME=${tool 'jdk17'}", "PATH+MAVEN=${tool 'maven-3'}/bin:${env.PATH}"]) {
+                    timeout(time: 10, unit: 'MINUTES') {
+                        sh 'mvn clean verify'
+                    }
                 }
             }
         }
-
+        
         stage('Analyse SonarQube') {
             steps {
-                withSonarQubeEnv('sonarqube') { 
-                    sh "mvn sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.login=${SONAR_TOKEN}"
+                withSonarQubeEnv('sonarqube') {
+                    withEnv(["JAVA_HOME=${tool 'jdk17'}", "PATH+MAVEN=${tool 'maven-3'}/bin:${env.PATH}"]) {
+                        sh "mvn sonar:sonar -Dsonar.login=${SONAR_TOKEN}"
+                    }
                 }
             }
         }
-
+        
         stage('Packaging (JAR)') {
             steps {
-                sh 'mvn package -DskipTests'
+                withEnv(["JAVA_HOME=${tool 'jdk17'}", "PATH+MAVEN=${tool 'maven-3'}/bin:${env.PATH}"]) {
+                    sh 'mvn package -DskipTests'
+                }
             }
         }
-
+        
         stage('Docker Build') {
             steps {
                 script {
-                    echo "🔨 Construction de l'image Docker : ${IMAGE_NAME}"
-                    sh "docker build -t ${IMAGE_NAME}:${env.BUILD_NUMBER} ."
-                    sh "docker tag ${IMAGE_NAME}:${env.BUILD_NUMBER} ${IMAGE_NAME}:latest"
+                    echo "🔨 Construction de l'image Docker : ${DOCKER_IMAGE}:v4"
+                    sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+                    sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest"
+                    sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:v4"
+                    
+                    // Vérifier
+                    sh "docker images | grep ${DOCKER_IMAGE}"
                 }
             }
         }
-
+        
         stage('Docker Push') {
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-id', passwordVariable: 'PASS', usernameVariable: 'USER')]) {
-                        echo "📤 Connexion à Docker Hub..."
-                        sh "echo $PASS | docker login -u $USER --password-stdin"
+                    withCredentials([usernamePassword(
+                        credentialsId: 'dockerhub-id',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        // Login to Docker Hub
+                        sh "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
                         
-                        echo "📤 Envoi de l'image vers Docker Hub..."
-                        sh "docker push ${IMAGE_NAME}:${env.BUILD_NUMBER}"
-                        sh "docker push ${IMAGE_NAME}:latest"
+                        // Push all tags
+                        sh "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                        sh "docker push ${DOCKER_IMAGE}:latest"
+                        sh "docker push ${DOCKER_IMAGE}:v4"
+                        
+                        echo "✅ Images poussées avec succès vers Docker Hub!"
                     }
                 }
             }
         }
     }
-
+    
     post {
-        success {
-            echo "✅ Pipeline terminé avec succès ! Image disponible sur Docker Hub."
-            // Optionnel : notification par email/webhook
+        always {
+            echo "🧹 Nettoyage..."
+            script {
+                
+                sh 'mvn clean'
+            }
         }
         failure {
             echo "❌ Le pipeline a échoué."
-            // Optionnel : notification d'échec
         }
-        always {
-            echo "🧹 Nettoyage Docker..."
-            // Nettoyage propre
-            sh """
-                docker rmi ${IMAGE_NAME}:latest 2>/dev/null || echo "Image latest déjà supprimée"
-                docker rmi ${IMAGE_NAME}:${env.BUILD_NUMBER} 2>/dev/null || echo "Image ${env.BUILD_NUMBER} déjà supprimée"
-            """
-            // Nettoyage général (supprime les conteneurs/images non utilisés)
-            sh 'docker system prune -f 2>/dev/null || true'
-            
-            // Nettoyage Maven (optionnel)
-            sh 'mvn clean 2>/dev/null || true'
+        success {
+            echo "✅ Pipeline exécuté avec succès!"
+            echo "📦 Images disponibles sur Docker Hub:"
+            echo "   - ${DOCKER_IMAGE}:v4"
+            echo "   - ${DOCKER_IMAGE}:latest"
+            echo "   - ${DOCKER_IMAGE}:${BUILD_NUMBER}"
         }
     }
 }
