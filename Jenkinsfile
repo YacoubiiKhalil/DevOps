@@ -1,113 +1,105 @@
 pipeline {
     agent any
-    
-    environment {
-        DOCKER_IMAGE = 'yacoubikha/student-app'
+
+    tools {
+        maven 'M3'
+        jdk 'jdk17'  // Ajouté - doit être configuré dans Jenkins
     }
-    
+
+    environment {
+        IMAGE_NAME = "yacoubikha/student-app"  // Changé pour student-app
+        SONAR_PROJECT_KEY = "student-management"  // Changé - c'est le projectKey, pas le token
+    }
+
     stages {
-        stage('Checkout Git') {
+        stage('Récupération Git') {
             steps {
-                git branch: 'main', 
-                    url: 'https://github.com/YacoubiiKhalil/DevOps.git'
+                git branch: 'main', url: 'https://github.com/YacoubiiKhalil/DevOps.git'
             }
         }
-        
-        stage('Install Java 17') {
+
+        stage('Build & Tests') {
             steps {
-                sh '''
-                    # Install Java 17 si pas déjà installé
-                    if ! command -v java &> /dev/null || ! java -version 2>&1 | grep -q "17"; then
-                        echo "Installing Java 17..."
-                        sudo apt update
-                        sudo apt install -y openjdk-17-jdk
-                    fi
-                    
-                    # Vérifier Java
-                    java -version
-                    export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
-                    echo "JAVA_HOME: $JAVA_HOME"
-                '''
+                timeout(time: 10, unit: 'MINUTES') {
+                    sh 'mvn clean verify'
+                }
             }
         }
-        
-        stage('Build & Test') {
+
+        stage('Analyse SonarQube') {
             steps {
-                sh '''
-                    # Utiliser Maven du système ou installer
-                    if ! command -v mvn &> /dev/null; then
-                        echo "Installing Maven..."
-                        sudo apt install -y maven
-                    fi
-                    
-                    mvn clean verify
-                '''
+                withSonarQubeEnv('sonarqube') { 
+                    // Le token est géré automatiquement par withSonarQubeEnv
+                    sh "mvn sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY}"
+                }
             }
         }
-        
-        stage('SonarQube Analysis') {
-            steps {
-                sh '''
-                    mvn sonar:sonar \
-                        -Dsonar.host.url=http://localhost:9000 \
-                        -Dsonar.token=sqa_64a2766f75fe255ca8c8db30e9111a24772df5f2
-                '''
-            }
-        }
-        
-        stage('Package JAR') {
+
+        stage('Packaging (JAR)') {
             steps {
                 sh 'mvn package -DskipTests'
             }
         }
-        
-        stage('Build Docker Image') {
+
+        stage('Docker Build') {
             steps {
-                sh '''
-                    echo "🔨 Building Docker image..."
-                    docker build -t yacoubikha/student-app:v4 .
-                    docker tag yacoubikha/student-app:v4 yacoubikha/student-app:latest
+                script {
+                    echo "🔨 Construction de l'image Docker : ${IMAGE_NAME}"
+                    sh "docker build -t ${IMAGE_NAME}:v4 ."  // Changé : v4 au lieu de BUILD_NUMBER
+                    sh "docker tag ${IMAGE_NAME}:v4 ${IMAGE_NAME}:latest"
                     
-                    echo "📋 Docker images created:"
-                    docker images | grep student-app
-                '''
+                    // Vérification
+                    sh "docker images | grep ${IMAGE_NAME}"
+                }
             }
         }
-        
-        stage('Push to Docker Hub') {
+
+        stage('Docker Push') {
             steps {
-                sh '''
-                    echo "🚀 Pushing to Docker Hub..."
-                    
-                    # METHOD 1: Direct login (remplacez le password)
-                    docker login --username yacoubikha --password-stdin <<< "VOTRE_MOT_DE_PASSE_DOCKERHUB"
-                    
-                    # Push images
-                    docker push yacoubikha/student-app:v4
-                    docker push yacoubikha/student-app:latest
-                    
-                    echo "✅ SUCCESS! Images pushed!"
-                    echo "📦 yacoubikha/student-app:v4"
-                    echo "📦 yacoubikha/student-app:latest"
-                '''
+                script {
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'dockerhub-id', 
+                            passwordVariable: 'DOCKER_PASSWORD', 
+                            usernameVariable: 'DOCKER_USERNAME'
+                        )
+                    ]) {
+                        echo "📤 Connexion à Docker Hub..."
+                        sh """
+                            echo "\${DOCKER_PASSWORD}" | docker login -u "\${DOCKER_USERNAME}" --password-stdin
+                        """
+                        
+                        echo "📤 Envoi de l'image vers Docker Hub..."
+                        sh """
+                            docker push ${IMAGE_NAME}:v4
+                            docker push ${IMAGE_NAME}:latest
+                        """
+                        
+                        echo "✅ Images poussées avec succès!"
+                    }
+                }
             }
         }
     }
-    
+
     post {
         success {
-            echo "🎉 PIPELINE SUCCESSFUL!"
-            echo "=========================================="
-            echo "📦 Docker Hub: https://hub.docker.com/r/yacoubikha/student-app"
-            echo "🔗 SonarQube: http://localhost:9000"
-            echo "=========================================="
+            echo "✅ Pipeline terminé avec succès !"
+            echo "📦 Images disponibles sur Docker Hub:"
+            echo "   - ${IMAGE_NAME}:v4"
+            echo "   - ${IMAGE_NAME}:latest"
+            echo "🔗 https://hub.docker.com/r/yacoubikha/student-app"
         }
         failure {
-            echo "❌ PIPELINE FAILED!"
+            echo "❌ Le pipeline a échoué."
         }
         always {
-            echo "🧹 Cleaning up..."
-            sh 'docker system prune -f || true'
+            echo "🧹 Nettoyage..."
+            // Nettoyage Maven seulement
+            sh 'mvn clean 2>/dev/null || true'
+            
+            // NE PAS supprimer les images Docker ici - elles sont déjà poussées
+            // sh 'docker system prune -f 2>/dev/null || true'
         }
     }
 }
