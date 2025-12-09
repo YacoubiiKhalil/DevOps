@@ -2,18 +2,13 @@ pipeline {
     agent any
 
     tools {
-        // Le nom doit correspondre à votre configuration dans "Global Tool Configuration"
         maven 'M3'
+        jdk 'jdk17'  // Ajouté - doit être configuré dans Jenkins
     }
 
     environment {
-        // --- CONFIGURATION DOCKER ---
-        // Nom exact de votre image (vu sur votre capture d'écran)
-        IMAGE_NAME = "yacoubikha/premiere-image"
-
-        // --- CONFIGURATION SONARQUBE ---
-        SONAR_TOKEN = credentials('sonarqube-token')
-        SONAR_PROJECT_KEY = "sqa_64a2766f75fe255ca8c8db30e9111a24772df5f2"
+        IMAGE_NAME = "yacoubikha/student-app"  // Changé pour student-app
+        SONAR_PROJECT_KEY = "student-management"  // Changé - c'est le projectKey, pas le token
     }
 
     stages {
@@ -26,7 +21,6 @@ pipeline {
         stage('Build & Tests') {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
-                    // Compile et lance les tests unitaires
                     sh 'mvn clean verify'
                 }
             }
@@ -34,16 +28,15 @@ pipeline {
 
         stage('Analyse SonarQube') {
             steps {
-                // 'sonarqube' doit être le nom configuré dans Jenkins (Gérer Jenkins > Système)
                 withSonarQubeEnv('sonarqube') {
-                    sh "mvn sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.login=${SONAR_TOKEN}"
+                    // Le token est géré automatiquement par withSonarQubeEnv
+                    sh "mvn sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY}"
                 }
             }
         }
 
         stage('Packaging (JAR)') {
             steps {
-                // Génère le fichier .jar dans le dossier target/ sans relancer les tests
                 sh 'mvn package -DskipTests'
             }
         }
@@ -52,9 +45,11 @@ pipeline {
             steps {
                 script {
                     echo "🔨 Construction de l'image Docker : ${IMAGE_NAME}"
-                    // Construction de l'image avec deux tags : le numéro de build (ex: :35) et 'latest'
-                    sh "docker build -t ${IMAGE_NAME}:${env.BUILD_NUMBER} ."
-                    sh "docker tag ${IMAGE_NAME}:${env.BUILD_NUMBER} ${IMAGE_NAME}:latest"
+                    sh "docker build -t ${IMAGE_NAME}:v4 ."  // Changé : v4 au lieu de BUILD_NUMBER
+                    sh "docker tag ${IMAGE_NAME}:v4 ${IMAGE_NAME}:latest"
+
+                    // Vérification
+                    sh "docker images | grep ${IMAGE_NAME}"
                 }
             }
         }
@@ -62,15 +57,25 @@ pipeline {
         stage('Docker Push') {
             steps {
                 script {
-                    // Connexion sécurisée à Docker Hub via les credentials Jenkins
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-id', passwordVariable: 'PASS', usernameVariable: 'USER')]) {
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'dockerhub-id',
+                            passwordVariable: 'DOCKER_PASSWORD',
+                            usernameVariable: 'DOCKER_USERNAME'
+                        )
+                    ]) {
                         echo "📤 Connexion à Docker Hub..."
-                        // Login non-interactif
-                        sh "echo $PASS | docker login -u $USER --password-stdin"
+                        sh """
+                            echo "\${DOCKER_PASSWORD}" | docker login -u "\${DOCKER_USERNAME}" --password-stdin
+                        """
 
                         echo "📤 Envoi de l'image vers Docker Hub..."
-                        sh "docker push ${IMAGE_NAME}:${env.BUILD_NUMBER}"
-                        sh "docker push ${IMAGE_NAME}:latest"
+                        sh """
+                            docker push ${IMAGE_NAME}:v4
+                            docker push ${IMAGE_NAME}:latest
+                        """
+
+                        echo "✅ Images poussées avec succès!"
                     }
                 }
             }
@@ -79,16 +84,22 @@ pipeline {
 
     post {
         success {
-            echo "✅ Pipeline terminé avec succès ! Image disponible sur Docker Hub."
+            echo "✅ Pipeline terminé avec succès !"
+            echo "📦 Images disponibles sur Docker Hub:"
+            echo "   - ${IMAGE_NAME}:v4"
+            echo "   - ${IMAGE_NAME}:latest"
+            echo "🔗 https://hub.docker.com/r/yacoubikha/student-app"
         }
         failure {
             echo "❌ Le pipeline a échoué."
         }
         always {
-            echo "🧹 Nettoyage des images Docker locales..."
-            // Supprime les images locales pour économiser de l'espace disque sur le serveur Jenkins
-            sh "docker rmi ${IMAGE_NAME}:${env.BUILD_NUMBER} || true"
-            sh "docker rmi ${IMAGE_NAME}:latest || true"
+            echo "🧹 Nettoyage..."
+            // Nettoyage Maven seulement
+            sh 'mvn clean 2>/dev/null || true'
+
+            // NE PAS supprimer les images Docker ici - elles sont déjà poussées
+            // sh 'docker system prune -f 2>/dev/null || true'
         }
     }
 }
