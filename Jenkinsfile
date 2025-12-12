@@ -3,12 +3,12 @@ pipeline {
 
     tools {
         maven 'M3'
-        jdk 'jdk17'  // Ajouté - doit être configuré dans Jenkins
+        jdk 'jdk17'
     }
 
     environment {
-        IMAGE_NAME = "yacoubikha/student-app"  // Changé pour student-app
-        SONAR_PROJECT_KEY = "student-management"  // Changé - c'est le projectKey, pas le token
+        IMAGE_NAME = "yacoubikha/student-app"
+        SONAR_PROJECT_KEY = "student-management"
     }
 
     stages {
@@ -21,6 +21,7 @@ pipeline {
         stage('Build & Tests') {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
+                    // CORRECTION: Exécute les tests pour générer la couverture
                     sh 'mvn clean verify'
                 }
             }
@@ -28,19 +29,20 @@ pipeline {
 
         stage('Analyse SonarQube') {
             steps {
-<<<<<<< HEAD
                 withSonarQubeEnv('sonarqube') {
-=======
-                withSonarQubeEnv('sonarqube') { 
->>>>>>> 35a4c8decbde4c551e85dcdd7f7c63f920f7e017
-                    // Le token est géré automatiquement par withSonarQubeEnv
-                    sh "mvn sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY}"
+                    // CORRECTION: Ajoute le chemin du rapport JaCoCo
+                    sh """
+                        mvn sonar:sonar \
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+                    """
                 }
             }
         }
 
         stage('Packaging (JAR)') {
             steps {
+                // OK de skip les tests ici, ils sont déjà faits
                 sh 'mvn package -DskipTests'
             }
         }
@@ -49,13 +51,9 @@ pipeline {
             steps {
                 script {
                     echo "🔨 Construction de l'image Docker : ${IMAGE_NAME}"
-                    sh "docker build -t ${IMAGE_NAME}:v4 ."  // Changé : v4 au lieu de BUILD_NUMBER
+                    sh "docker build -t ${IMAGE_NAME}:v4 ."
                     sh "docker tag ${IMAGE_NAME}:v4 ${IMAGE_NAME}:latest"
-<<<<<<< HEAD
-
-=======
                     
->>>>>>> 35a4c8decbde4c551e85dcdd7f7c63f920f7e017
                     // Vérification
                     sh "docker images | grep ${IMAGE_NAME}"
                 }
@@ -67,35 +65,23 @@ pipeline {
                 script {
                     withCredentials([
                         usernamePassword(
-<<<<<<< HEAD
                             credentialsId: 'dockerhub-id',
                             passwordVariable: 'DOCKER_PASSWORD',
-=======
-                            credentialsId: 'dockerhub-id', 
-                            passwordVariable: 'DOCKER_PASSWORD', 
->>>>>>> 35a4c8decbde4c551e85dcdd7f7c63f920f7e017
                             usernameVariable: 'DOCKER_USERNAME'
                         )
                     ]) {
                         echo "📤 Connexion à Docker Hub..."
+                        // CORRECTION: Syntaxe des variables
                         sh """
-                            echo "\${DOCKER_PASSWORD}" | docker login -u "\${DOCKER_USERNAME}" --password-stdin
+                            echo "\$DOCKER_PASSWORD" | docker login -u "\$DOCKER_USERNAME" --password-stdin
                         """
-<<<<<<< HEAD
-
-=======
                         
->>>>>>> 35a4c8decbde4c551e85dcdd7f7c63f920f7e017
                         echo "📤 Envoi de l'image vers Docker Hub..."
                         sh """
                             docker push ${IMAGE_NAME}:v4
                             docker push ${IMAGE_NAME}:latest
                         """
-<<<<<<< HEAD
-
-=======
                         
->>>>>>> 35a4c8decbde4c551e85dcdd7f7c63f920f7e017
                         echo "✅ Images poussées avec succès!"
                     }
                 }
@@ -116,15 +102,7 @@ pipeline {
         }
         always {
             echo "🧹 Nettoyage..."
-            // Nettoyage Maven seulement
             sh 'mvn clean 2>/dev/null || true'
-<<<<<<< HEAD
-
-=======
-            
->>>>>>> 35a4c8decbde4c551e85dcdd7f7c63f920f7e017
-            // NE PAS supprimer les images Docker ici - elles sont déjà poussées
-            // sh 'docker system prune -f 2>/dev/null || true'
         }
     }
 }
