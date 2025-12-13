@@ -27,6 +27,8 @@ spec:
           value: "sonar"
         - name: SONAR_JDBC_PASSWORD
           value: "sonar"
+        - name: SONAR_EMBEDDEDDATABASE_PORT
+          value: "9092"
         resources:
           requests:
             memory: "2Gi"
