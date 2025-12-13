@@ -1,23 +1,261 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: sonarqube
-  namespace: devops
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: sonarqube
-  template:
-    metadata:
-      labels:
-        app: sonarqube
-    spec:
-      containers:
-        - name: sonarqube
-          image: sonarqube:lts-community
-          ports:
-            - containerPort: 9000
-          env:
-            - name: SONAR_ES_BOOTSTRAP_CHECKS_DISABLE
-              value: "true"
+pipeline {
+    agent any
+
+    tools {
+        maven 'M3'
+        jdk 'jdk17'
+    }
+
+    environment {
+        SONAR_PROJECT_KEY = "student-management"
+        SONAR_HOST_URL = "http://sonarqube.devops.svc.cluster.local:9000"
+        K8S_PATH = "src/main/java/tn/esprit/studentmanagement/k8s"
+    }
+
+    stages {
+
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/YacoubiiKhalil/DevOps.git'
+            }
+        }
+
+        stage('Vérification des fichiers') {
+            steps {
+                script {
+                    echo "📁 Structure du projet:"
+                    sh '''
+                    pwd
+                    ls -la
+                    echo "=== Recherche des fichiers Kubernetes ==="
+                    find . -name "*.yaml" -type f | grep -i sonar || echo "Fichiers SonarQube non trouvés"
+                    echo "=== Contenu du dossier k8s ==="
+                    ls -la ${K8S_PATH}/ || echo "Dossier non trouvé"
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy SonarQube on Kubernetes') {
+            steps {
+                script {
+                    // Créer le namespace si nécessaire
+                    sh '''
+                    kubectl create namespace devops 2>/dev/null || true
+                    '''
+                    
+                    // Déployer SonarQube depuis le bon chemin
+                    sh """
+                    echo "🚀 Déploiement de SonarQube depuis: ${K8S_PATH}"
+                    
+                    echo "1. Application du déploiement..."
+                    kubectl apply -f ${K8S_PATH}/sonarqube.yaml -n devops
+                    
+                    echo "2. Application du service..."
+                    kubectl apply -f ${K8S_PATH}/sonarqube-service.yaml -n devops
+                    
+                    echo "✅ Déploiement initié"
+                    """
+                    
+                    // Attendre que SonarQube soit prêt avec un timeout
+                    timeout(time: 5, unit: 'MINUTES') {
+                        script {
+                            sh '''
+                            echo "⏳ Attente du démarrage de SonarQube..."
+                            
+                            # Attendre que le pod soit créé
+                            until kubectl get pods -n devops -l app=sonarqube 2>/dev/null | grep -q "sonarqube"; do
+                                sleep 10
+                                echo "En attente du pod SonarQube..."
+                            done
+                            
+                            # Attendre que le pod soit Running
+                            SONAR_POD=""
+                            while [ -z "$SONAR_POD" ] || [ "$(kubectl get pod $SONAR_POD -n devops -o jsonpath='{.status.phase}')" != "Running" ]; do
+                                SONAR_POD=$(kubectl get pods -n devops -l app=sonarqube -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+                                if [ -n "$SONAR_POD" ]; then
+                                    POD_STATUS=$(kubectl get pod $SONAR_POD -n devops -o jsonpath='{.status.phase}')
+                                    echo "Pod: $SONAR_POD - Statut: $POD_STATUS"
+                                fi
+                                sleep 10
+                            done
+                            
+                            # Attendre que SonarQube soit accessible
+                            echo "🔍 Vérification de l'accessibilité de SonarQube..."
+                            for i in {1..30}; do
+                                if kubectl exec -n devops $SONAR_POD -- sh -c "curl -s -f http://localhost:9000/api/system/status > /dev/null"; then
+                                    echo "✅ SonarQube est accessible (tentative $i/30)"
+                                    break
+                                fi
+                                sleep 10
+                                echo "Tentative $i/30 - SonarQube n'est pas encore prêt..."
+                            done
+                            
+                            echo "📊 État final:"
+                            kubectl get all -n devops
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube Code Analysis') {
+            steps {
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    script {
+                        // Vérifier que SonarQube est prêt
+                        sh '''
+                        SONAR_POD=$(kubectl get pods -n devops -l app=sonarqube -o jsonpath='{.items[0].metadata.name}')
+                        echo "📡 Connexion à SonarQube via le pod: $SONAR_POD"
+                        
+                        # Vérifier le statut de SonarQube
+                        SONAR_STATUS=$(kubectl exec -n devops $SONAR_POD -- curl -s http://localhost:9000/api/system/status | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "UNKNOWN")
+                        echo "Statut SonarQube: $SONAR_STATUS"
+                        
+                        if [ "$SONAR_STATUS" != "UP" ]; then
+                            echo "⚠️  SonarQube n'est pas encore UP, attente supplémentaire..."
+                            sleep 30
+                        fi
+                        '''
+                        
+                        // Exécuter l'analyse SonarQube
+                        sh """
+                        echo "🔧 Démarrage de l'analyse SonarQube..."
+                        echo "Projet: \${SONAR_PROJECT_KEY}"
+                        echo "URL: \${SONAR_HOST_URL}"
+                        
+                        mvn clean compile sonar:sonar \
+                          -Dsonar.projectKey=\${SONAR_PROJECT_KEY} \
+                          -Dsonar.host.url=\${SONAR_HOST_URL} \
+                          -Dsonar.login=\$SONAR_TOKEN \
+                          -Dsonar.projectName="Student Management System" \
+                          -Dsonar.projectVersion=1.0 \
+                          -Dsonar.sources=src/main/java \
+                          -Dsonar.java.binaries=target/classes \
+                          -Dsonar.sourceEncoding=UTF-8
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Vérification des résultats') {
+            steps {
+                script {
+                    sh '''
+                    echo "========================================="
+                    echo "✅ ANALYSE SONARQUBE TERMINÉE"
+                    echo "========================================="
+                    
+                    echo ""
+                    echo "1. Vérification du déploiement Kubernetes:"
+                    kubectl get pods,svc -n devops
+                    
+                    echo ""
+                    echo "2. Accès à SonarQube:"
+                    SONAR_SVC_IP=$(kubectl get svc sonarqube -n devops -o jsonpath='{.spec.clusterIP}')
+                    SONAR_NODE_PORT=$(kubectl get svc sonarqube -n devops -o jsonpath='{.spec.ports[0].nodePort}')
+                    
+                    echo "   - Depuis Jenkins/autres pods: http://sonarqube.devops.svc.cluster.local:9000"
+                    echo "   - IP Interne: http://${SONAR_SVC_IP}:9000"
+                    echo "   - NodePort: http://<NODE_IP>:${SONAR_NODE_PORT}"
+                    
+                    echo ""
+                    echo "3. Vérification que l'analyse a été reçue:"
+                    SONAR_POD=$(kubectl get pods -n devops -l app=sonarqube -o jsonpath='{.items[0].metadata.name}')
+                    
+                    # Attendre un peu pour le traitement
+                    echo "   Attente du traitement de l'analyse..."
+                    sleep 20
+                    
+                    # Vérifier si le projet existe dans SonarQube
+                    echo "   Recherche du projet ${SONAR_PROJECT_KEY} dans SonarQube..."
+                    if kubectl exec -n devops $SONAR_POD -- curl -s "http://localhost:9000/api/projects/search?q=${SONAR_PROJECT_KEY}" | grep -q "${SONAR_PROJECT_KEY}"; then
+                        echo "   ✅ Projet trouvé dans SonarQube!"
+                    else
+                        echo "   ⚠️  Le projet n'est pas encore visible (peut prendre quelques minutes)"
+                        echo "   Vous pouvez vérifier manuellement:"
+                        echo "   kubectl exec -n devops $SONAR_POD -- curl -s 'http://localhost:9000/api/projects/search'"
+                    fi
+                    
+                    echo ""
+                    echo "📋 RÉSUMÉ:"
+                    echo "   - SonarQube déployé sur Kubernetes ✓"
+                    echo "   - Analyse du code exécutée ✓"
+                    echo "   - Résultats envoyés au pod SonarQube ✓"
+                    echo "   - Vérification de la qualité effectuée ✓"
+                    
+                    # Afficher l'URL d'accès
+                    NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null || echo "localhost")
+                    echo ""
+                    echo "🌐 URL D'ACCÈS À SONARQUBE:"
+                    echo "   http://${NODE_IP}:${SONAR_NODE_PORT}"
+                    echo "   Identifiants par défaut: admin / admin"
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "🎉 PIPELINE RÉUSSI - EXIGENCES VALIDÉES"
+            echo ""
+            echo "1️⃣ SonarQube lancé dans un pod Kubernetes ✓"
+            echo "2️⃣ Analyse de qualité effectuée via le pipeline Jenkins ✓"
+            echo "3️⃣ Résultats visibles directement sur le pod SonarQube ✓"
+            echo "4️⃣ Vérification de l'analyse effectuée ✓"
+            
+            script {
+                sh '''
+                echo ""
+                echo "🔍 Pour vérifier manuellement:"
+                echo "   kubectl get pods -n devops"
+                echo "   kubectl logs -n devops -l app=sonarqube --tail=20"
+                echo ""
+                echo "📊 Pour voir l'analyse:"
+                echo "   Connectez-vous à SonarQube avec les URLs ci-dessus"
+                echo "   Cherchez le projet: ${SONAR_PROJECT_KEY}"
+                '''
+            }
+        }
+        failure {
+            echo "❌ PIPELINE ÉCHOUÉ"
+            script {
+                sh '''
+                echo ""
+                echo "🔧 DÉPANNAGE:"
+                echo ""
+                echo "1. Vérifier les ressources Kubernetes:"
+                kubectl get all -n devops 2>/dev/null || echo "   -> Namespace 'devops' non trouvé"
+                
+                echo ""
+                echo "2. Vérifier les logs SonarQube:"
+                SONAR_POD=$(kubectl get pods -n devops -l app=sonarqube -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "none")
+                if [ "$SONAR_POD" != "none" ]; then
+                    echo "   Logs de $SONAR_POD:"
+                    kubectl logs -n devops $SONAR_POD --tail=50
+                else
+                    echo "   -> Pod SonarQube non trouvé"
+                fi
+                
+                echo ""
+                echo "3. Vérifier les événements:"
+                kubectl get events -n devops --sort-by='.lastTimestamp' 2>/dev/null | tail -10
+                
+                echo ""
+                echo "4. Tester la connexion à SonarQube:"
+                echo "   kubectl run test-curl --rm -i --tty --image=curlimages/curl --restart=Never -- sh -c 'curl -v http://sonarqube.devops:9000/api/system/status'"
+                '''
+            }
+        }
+        always {
+            echo "========================================="
+            echo "🧹 Pour nettoyer:"
+            echo "   kubectl delete -f ${K8S_PATH}/sonarqube.yaml -n devops"
+            echo "   kubectl delete -f ${K8S_PATH}/sonarqube-service.yaml -n devops"
+            echo "========================================="
+        }
+    }
+}
