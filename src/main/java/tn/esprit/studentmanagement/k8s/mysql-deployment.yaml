@@ -47,18 +47,23 @@ spec:
               value: "root123"
             - name: MYSQL_DATABASE
               value: "springdb"
+            # CRITIQUE : Crée root@% automatiquement
+            - name: MYSQL_ROOT_HOST
+              value: "%"
+          # CRITIQUE : MySQL écoute sur toutes les IP
+          args: ["--bind-address=0.0.0.0"]
           ports:
             - containerPort: 3306
           volumeMounts:
             - mountPath: /var/lib/mysql
               name: mysql-storage
-          # Ajoute ces ressources pour éviter les warnings
+          # SUPPRIMEZ la section "command:" COMPLÈTEMENT !
           resources:
             requests:
-              memory: "256Mi"
+              memory: "512Mi"  # Augmentez la mémoire
               cpu: "250m"
             limits:
-              memory: "512Mi"
+              memory: "1Gi"
               cpu: "500m"
       volumes:
         - name: mysql-storage
