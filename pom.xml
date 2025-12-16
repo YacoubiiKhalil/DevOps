@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>3.5.5</version>
         <relativePath/>
     </parent>
+
     <groupId>tn.esprit</groupId>
     <artifactId>student-management</artifactId>
     <version>0.0.1-SNAPSHOT</version>
@@ -17,8 +21,9 @@
     <properties>
         <java.version>17</java.version>
         <jacoco.version>0.8.10</jacoco.version>
-        <spring.profiles.active>test</spring.profiles.active>
-        <!-- NE METTEZ RIEN ICI pour jacoco -->
+        <!-- IMPORTANT: Pas de spring.profiles.active ici -->
+        <sonar.java.coveragePlugin>jacoco</sonar.java.coveragePlugin>
+        <sonar.dynamicAnalysis>reuseReports</sonar.dynamicAnalysis>
     </properties>
 
     <dependencies>
@@ -67,20 +72,21 @@
                 </configuration>
             </plugin>
 
-            <!-- 1. PLUGIN SUREFIRE - VERSION SIMPLE -->
+            <!-- 1. SUREFIRE - SIMPLE -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.3</version>
                 <configuration>
-                    <!-- NE PAS TOUCHER À argLine -->
+                    <!-- CRITIQUE: Ne pas modifier argLine ! Jacoco le fait automatiquement -->
                     <includes>
                         <include>**/*Test.java</include>
+                        <include>**/*Tests.java</include>
                     </includes>
                 </configuration>
             </plugin>
 
-            <!-- 2. PLUGIN JACOCO - VERSION MINIMALE -->
+            <!-- 2. JACOCO - CONFIGURATION STANDARD -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
@@ -100,6 +106,13 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+
+            <!-- 3. SONAR - SI BESOIN -->
+            <plugin>
+                <groupId>org.sonarsource.scanner.maven</groupId>
+                <artifactId>sonar-maven-plugin</artifactId>
+                <version>3.11.0.3922</version>
             </plugin>
         </plugins>
     </build>
