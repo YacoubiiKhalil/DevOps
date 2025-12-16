@@ -18,8 +18,7 @@
         <java.version>17</java.version>
         <jacoco.version>0.8.10</jacoco.version>
         <spring.profiles.active>test</spring.profiles.active>
-        <!-- CORRECTION DE L'ERREUR : On initialise la variable ici pour que l'IDE la reconnaisse -->
-        <jacoco.agent.argLine />
+        <!-- NE METTEZ RIEN ICI pour jacoco -->
     </properties>
 
     <dependencies>
@@ -68,49 +67,37 @@
                 </configuration>
             </plugin>
 
-            <!-- 1. PLUGIN SUREFIRE (TESTS) -->
+            <!-- 1. PLUGIN SUREFIRE - VERSION SIMPLE -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.3</version>
                 <configuration>
-                    <!-- C'est ici qu'on injecte l'agent JaCoCo -->
-                    <argLine>${jacoco.agent.argLine}</argLine>
+                    <!-- NE PAS TOUCHER À argLine -->
                     <includes>
                         <include>**/*Test.java</include>
                     </includes>
-                    <testFailureIgnore>true</testFailureIgnore>
                 </configuration>
             </plugin>
 
-            <!-- 2. PLUGIN JACOCO (COVERAGE) -->
+            <!-- 2. PLUGIN JACOCO - VERSION MINIMALE -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>${jacoco.version}</version>
                 <executions>
-                    <!-- Phase 1 : Préparer l'agent avant les tests -->
                     <execution>
                         <id>prepare-agent</id>
                         <goals>
                             <goal>prepare-agent</goal>
                         </goals>
-                        <configuration>
-                            <propertyName>jacoco.agent.argLine</propertyName>
-                        </configuration>
                     </execution>
-                    <!-- Phase 2 : Générer le rapport après les tests -->
                     <execution>
                         <id>report</id>
                         <phase>verify</phase>
                         <goals>
                             <goal>report</goal>
                         </goals>
-                        <configuration>
-                            <formats>
-                                <format>XML</format>
-                            </formats>
-                        </configuration>
                     </execution>
                 </executions>
             </plugin>

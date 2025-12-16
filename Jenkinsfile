@@ -7,45 +7,28 @@ pipeline {
     }
     
     stages {
-        stage('🧹 Nettoyage Workspace') {
+        stage('🧹 Nettoyage') {
             steps {
                 cleanWs()
-            }
-        }
-
-        stage('📥 Récupération Git') {
-            steps {
                 git branch: 'main', url: 'https://github.com/YacoubiiKhalil/DevOps.git'
             }
         }
 
-        stage('🚀 Tests & Analyse SonarQube') {
+        stage('🚀 Tests & SonarQube') {
             steps {
                 script {
-                    def credentialIds = ['jenkins-token', 'sonarqube-token', 'sonar-token']
-                    def success = false
-
-                    for (credId in credentialIds) {
-                        if (!success) {
-                            try {
-                                withCredentials([string(credentialsId: credId, variable: 'SONAR_TOKEN')]) {
-                                    // La commande magique qui fait tout dans l'ordre
-                                    sh """
-                                        mvn clean verify sonar:sonar \
-                                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                                          -Dsonar.host.url=${SONAR_HOST_URL} \
-                                          -Dsonar.login=${SONAR_TOKEN} \
-                                          -Dspring.datasource.url=jdbc:h2:mem:testdb \
-                                          -Dspring.datasource.driver-class-name=org.h2.Driver
-                                    """
-                                }
-                                success = true
-                            } catch (Exception e) {
-                                echo "Passage au token suivant..."
-                            }
-                        }
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        sh """
+                            # COMMANDE MAGIQUE QUI FONCTIONNE
+                            mvn clean verify sonar:sonar \
+                              -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                              -Dsonar.host.url=${SONAR_HOST_URL} \
+                              -Dsonar.login=${SONAR_TOKEN} \
+                              -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+                              -Dspring.datasource.url=jdbc:h2:mem:testdb \
+                              -Dspring.datasource.driver-class-name=org.h2.Driver
+                        """
                     }
-                    if (!success) error "Analyse échouée"
                 }
             }
         }
