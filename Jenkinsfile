@@ -1,34 +1,38 @@
-// Jenkinsfile-simple-docker
 pipeline {
     agent any
-    environment {
-        IMAGE_NAME = "yacoubikha/student-management"
-    }
     stages {
-        stage('Build & Push') {
+        stage('📁 DIAGNOSTIC STRUCTURE') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-id',
-                        passwordVariable: 'DOCKER_TOKEN',
-                        usernameVariable: 'DOCKER_USER'
-                    )
-                ]) {
-                    sh '''
-                        # Connexion
-                        echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USER" --password-stdin
-                        
-                        # Construction
-                        docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .
-                        docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${IMAGE_NAME}:latest
-                        
-                        # Push
-                        docker push ${IMAGE_NAME}:${BUILD_NUMBER}
-                        docker push ${IMAGE_NAME}:latest
-                        
-                        echo "✅ Succès!"
-                    '''
-                }
+                sh '''
+                    echo "=========================================="
+                    echo "🧪 DIAGNOSTIC COMPLET JENKINS WORKSPACE"
+                    echo "=========================================="
+                    echo ""
+                    echo "1️⃣ DOSSIER COURANT :"
+                    pwd
+                    echo ""
+                    echo "2️⃣ LISTE FICHIERS (racine) :"
+                    ls -la
+                    echo ""
+                    echo "3️⃣ RECHERCHE DOCKERFILE :"
+                    find . -type f -name "Dockerfile" 2>/dev/null
+                    echo ""
+                    echo "4️⃣ EMPLACEMENT(S) DOCKERFILE TROUVÉ(S) :"
+                    find . -type f -name "Dockerfile" -exec echo "   📍 {}" \; 2>/dev/null
+                    echo ""
+                    echo "5️⃣ CONTENU DU PREMIER DOCKERFILE :"
+                    find . -type f -name "Dockerfile" -exec head -5 {} \; 2>/dev/null | head -10
+                    echo ""
+                    echo "6️⃣ STRUCTURE ARBRE :"
+                    find . -type d -name "docker" -o -name "target" | sort
+                    echo ""
+                    echo "7️⃣ FICHIERS .JAR :"
+                    find . -type f -name "*.jar" 2>/dev/null
+                    echo ""
+                    echo "=========================================="
+                    echo "✅ DIAGNOSTIC TERMINÉ"
+                    echo "=========================================="
+                '''
             }
         }
     }
