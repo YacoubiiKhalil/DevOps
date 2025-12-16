@@ -1,37 +1,23 @@
 pipeline {
     agent any
     stages {
-        stage('📁 DIAGNOSTIC STRUCTURE') {
+        stage('📁 DIAGNOSTIC RAPIDE') {
             steps {
                 sh '''
-                    echo "=========================================="
-                    echo "🧪 DIAGNOSTIC COMPLET JENKINS WORKSPACE"
-                    echo "=========================================="
+                    echo "=== DIAGNOSTIC ==="
+                    echo "Dossier: $(pwd)"
                     echo ""
-                    echo "1️⃣ DOSSIER COURANT :"
-                    pwd
-                    echo ""
-                    echo "2️⃣ LISTE FICHIERS (racine) :"
+                    echo "Fichiers:"
                     ls -la
                     echo ""
-                    echo "3️⃣ RECHERCHE DOCKERFILE :"
-                    find . -type f -name "Dockerfile" 2>/dev/null
+                    echo "Dockerfile(s) trouvé(s):"
+                    find . -name "Dockerfile" 2>/dev/null
                     echo ""
-                    echo "4️⃣ EMPLACEMENT(S) DOCKERFILE TROUVÉ(S) :"
-                    find . -type f -name "Dockerfile" -exec echo "   📍 {}" \; 2>/dev/null
+                    echo "Structure docker/:"
+                    ls -la docker/ 2>/dev/null || echo "Pas de dossier docker/"
                     echo ""
-                    echo "5️⃣ CONTENU DU PREMIER DOCKERFILE :"
-                    find . -type f -name "Dockerfile" -exec head -5 {} \; 2>/dev/null | head -10
-                    echo ""
-                    echo "6️⃣ STRUCTURE ARBRE :"
-                    find . -type d -name "docker" -o -name "target" | sort
-                    echo ""
-                    echo "7️⃣ FICHIERS .JAR :"
-                    find . -type f -name "*.jar" 2>/dev/null
-                    echo ""
-                    echo "=========================================="
-                    echo "✅ DIAGNOSTIC TERMINÉ"
-                    echo "=========================================="
+                    echo "Structure target/:"
+                    ls -la target/ 2>/dev/null || echo "Pas de dossier target/"
                 '''
             }
         }
