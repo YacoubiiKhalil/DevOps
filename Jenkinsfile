@@ -81,7 +81,7 @@ pipeline {
         stage('🔍 Analyse SonarQube') {
             steps {
                 script {
-                    // CORRECTION ICI : 'sonar token' au lieu de 'sonar-token'
+                    // CORRECTION CRITIQUE : 'sonar token' avec espace
                     withCredentials([string(credentialsId: 'sonar token', variable: 'SONAR_TOKEN')]) {
                         sh """
                             echo "=== LANCEMENT SONARQUBE ==="
