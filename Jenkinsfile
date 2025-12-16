@@ -19,7 +19,11 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/YacoubiiKhalil/DevOps.git'
             }
         }
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> 0ba8f0265b1d134a45a009830a51e1c1f0ad68fc
         stage('🔨 Tests & Rapport Couverture') {
             steps {
                 // MODIFICATION ICI :
@@ -32,7 +36,11 @@ pipeline {
                 '''
             }
         }
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> 0ba8f0265b1d134a45a009830a51e1c1f0ad68fc
         stage('🔍 Analyse SonarQube') {
             steps {
                 script {
