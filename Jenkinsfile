@@ -81,7 +81,8 @@ pipeline {
         stage('🔍 Analyse SonarQube') {
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    // CORRECTION ICI : 'sonar token' au lieu de 'sonar-token'
+                    withCredentials([string(credentialsId: 'sonar token', variable: 'SONAR_TOKEN')]) {
                         sh """
                             echo "=== LANCEMENT SONARQUBE ==="
                             echo "URL: ${SONAR_HOST_URL}"
