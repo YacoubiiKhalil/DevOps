@@ -7,7 +7,6 @@ pipeline {
     }
     
     stages {
-        // Optionnel : Nettoyage pour éviter les erreurs de permission précédentes
         stage('🧹 Nettoyage Workspace') {
             steps {
                 cleanWs()
@@ -19,29 +18,8 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/YacoubiiKhalil/DevOps.git'
             }
         }
-<<<<<<< HEAD
 
-=======
-        
->>>>>>> 0ba8f0265b1d134a45a009830a51e1c1f0ad68fc
-        stage('🔨 Tests & Rapport Couverture') {
-            steps {
-                // MODIFICATION ICI :
-                // 1. On retire "-Dtest=SimpleTest" pour tester tout le projet
-                // 2. On ajoute "jacoco:report" pour générer le fichier target/site/jacoco/jacoco.xml
-                sh '''
-                    mvn clean test jacoco:report \
-                      -Dspring.datasource.url=jdbc:h2:mem:testdb \
-                      -Dspring.datasource.driver-class-name=org.h2.Driver
-                '''
-            }
-        }
-<<<<<<< HEAD
-
-=======
-        
->>>>>>> 0ba8f0265b1d134a45a009830a51e1c1f0ad68fc
-        stage('🔍 Analyse SonarQube') {
+        stage('🚀 Tests & Analyse SonarQube') {
             steps {
                 script {
                     def credentialIds = ['jenkins-token', 'sonarqube-token', 'sonar-token']
@@ -50,26 +28,24 @@ pipeline {
                     for (credId in credentialIds) {
                         if (!success) {
                             try {
-                                echo "Tentative avec credentials: ${credId}"
                                 withCredentials([string(credentialsId: credId, variable: 'SONAR_TOKEN')]) {
+                                    // La commande magique qui fait tout dans l'ordre
                                     sh """
-                                        mvn sonar:sonar \
+                                        mvn clean verify sonar:sonar \
                                           -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
                                           -Dsonar.host.url=${SONAR_HOST_URL} \
                                           -Dsonar.login=${SONAR_TOKEN} \
-                                          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+                                          -Dspring.datasource.url=jdbc:h2:mem:testdb \
+                                          -Dspring.datasource.driver-class-name=org.h2.Driver
                                     """
                                 }
                                 success = true
-                                echo "✅ Succès avec ${credId}"
                             } catch (Exception e) {
-                                echo "❌ Échec avec ${credId}"
+                                echo "Passage au token suivant..."
                             }
                         }
                     }
-                    if (!success) {
-                        error "Impossible de se connecter à SonarQube avec les tokens fournis."
-                    }
+                    if (!success) error "Analyse échouée"
                 }
             }
         }

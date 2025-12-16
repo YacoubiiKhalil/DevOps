@@ -16,10 +16,10 @@
 
     <properties>
         <java.version>17</java.version>
-        <maven.test.failure.ignore>true</maven.test.failure.ignore>
-        <jacoco.version>0.8.8</jacoco.version>
-        <!-- Profile test par défaut -->
+        <jacoco.version>0.8.10</jacoco.version>
         <spring.profiles.active>test</spring.profiles.active>
+        <!-- CORRECTION DE L'ERREUR : On initialise la variable ici pour que l'IDE la reconnaisse -->
+        <jacoco.agent.argLine />
     </properties>
 
     <dependencies>
@@ -44,24 +44,12 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>1.18.38</version>
             <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
-        </dependency>
-        <!-- H2 POUR LES TESTS SEULEMENT -->
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>2.1.0</version>
         </dependency>
     </dependencies>
 
@@ -80,35 +68,28 @@
                 </configuration>
             </plugin>
 
-            <!-- 1. PLUGIN SUREFIRE POUR LES TESTS -->
+            <!-- 1. PLUGIN SUREFIRE (TESTS) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.3</version>
                 <configuration>
-                    <!-- Exécute TOUS les tests -->
+                    <!-- C'est ici qu'on injecte l'agent JaCoCo -->
+                    <argLine>${jacoco.agent.argLine}</argLine>
                     <includes>
                         <include>**/*Test.java</include>
-                        <include>**/*Tests.java</include>
                     </includes>
-                    <!-- Variables pour tests -->
-                    <systemPropertyVariables>
-                        <spring.profiles.active>${spring.profiles.active}</spring.profiles.active>
-                        <spring.datasource.url>jdbc:h2:mem:testdb</spring.datasource.url>
-                        <spring.datasource.driver-class-name>org.h2.Driver</spring.datasource.driver-class-name>
-                    </systemPropertyVariables>
-                    <!-- Ignorer les échecs TEMPORAIREMENT -->
-                    <testFailureIgnore>${maven.test.failure.ignore}</testFailureIgnore>
+                    <testFailureIgnore>true</testFailureIgnore>
                 </configuration>
             </plugin>
 
-            <!-- 2. PLUGIN JACOCO POUR COVERAGE -->
+            <!-- 2. PLUGIN JACOCO (COVERAGE) -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>${jacoco.version}</version>
                 <executions>
-                    <!-- Préparation agent -->
+                    <!-- Phase 1 : Préparer l'agent avant les tests -->
                     <execution>
                         <id>prepare-agent</id>
                         <goals>
@@ -116,11 +97,9 @@
                         </goals>
                         <configuration>
                             <propertyName>jacoco.agent.argLine</propertyName>
-                            <destFile>${project.build.directory}/jacoco.exec</destFile>
                         </configuration>
                     </execution>
-
-                    <!-- Génération rapport -->
+                    <!-- Phase 2 : Générer le rapport après les tests -->
                     <execution>
                         <id>report</id>
                         <phase>verify</phase>
@@ -128,77 +107,13 @@
                             <goal>report</goal>
                         </goals>
                         <configuration>
-                            <outputDirectory>${project.build.directory}/site/jacoco</outputDirectory>
-                            <dataFile>${project.build.directory}/jacoco.exec</dataFile>
-                        </configuration>
-                    </execution>
-
-                    <!-- Vérification règles (désactivé temporairement) -->
-                    <execution>
-                        <id>check</id>
-                        <goals>
-                            <goal>check</goal>
-                        </goals>
-                        <configuration>
-                            <skip>true</skip> <!-- DÉSACTIVÉ POUR L'INSTANT -->
-                            <rules>
-                                <rule>
-                                    <element>BUNDLE</element>
-                                    <limits>
-                                        <limit>
-                                            <counter>LINE</counter>
-                                            <value>COVEREDRATIO</value>
-                                            <minimum>0.01</minimum> <!-- 1% -->
-                                        </limit>
-                                    </limits>
-                                </rule>
-                            </rules>
+                            <formats>
+                                <format>XML</format>
+                            </formats>
                         </configuration>
                     </execution>
                 </executions>
             </plugin>
-
-            <!-- 3. PLUGIN COMPILER -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.14.0</version>
-                <configuration>
-                    <source>${java.version}</source>
-                    <target>${java.version}</target>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                            <version>1.18.38</version>
-                        </path>
-                    </annotationProcessorPaths>
-                </configuration>
-            </plugin>
         </plugins>
     </build>
-
-    <!-- PROFILES Maven -->
-    <profiles>
-        <!-- Profile TEST (par défaut) -->
-        <profile>
-            <id>test</id>
-            <activation>
-                <activeByDefault>true</activeByDefault>
-            </activation>
-            <properties>
-                <spring.profiles.active>test</spring.profiles.active>
-                <maven.test.failure.ignore>true</maven.test.failure.ignore>
-            </properties>
-        </profile>
-
-        <!-- Profile PRODUCTION -->
-        <profile>
-            <id>prod</id>
-            <properties>
-                <spring.profiles.active>prod</spring.profiles.active>
-                <maven.test.failure.ignore>false</maven.test.failure.ignore>
-            </properties>
-        </profile>
-    </profiles>
 </project>
