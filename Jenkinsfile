@@ -81,8 +81,8 @@ pipeline {
         stage('🔍 Analyse SonarQube') {
             steps {
                 script {
-                    // CORRECTION CRITIQUE : 'sonar token' avec espace
-                    withCredentials([string(credentialsId: 'sonar token', variable: 'SONAR_TOKEN')]) {
+                    // CORRECTION FINALE : 'JenkinsPipelineToken' au lieu de 'sonar token'
+                    withCredentials([string(credentialsId: 'JenkinsPipelineToken', variable: 'SONAR_TOKEN')]) {
                         sh """
                             echo "=== LANCEMENT SONARQUBE ==="
                             echo "URL: ${SONAR_HOST_URL}"
