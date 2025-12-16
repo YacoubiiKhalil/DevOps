@@ -2,9 +2,8 @@ pipeline {
     agent any
     
     environment {
-        // ⭐ CONFIGURATION SONARQUBE
-        SONAR_HOST_URL = "http://localhost:9000"      // Lien SonarQube
-        SONAR_PROJECT_KEY = "student-management"      // Nom exact du projet
+        SONAR_HOST_URL = "http://localhost:9000"
+        SONAR_PROJECT_KEY = "student-management"
     }
     
     stages {
@@ -14,11 +13,22 @@ pipeline {
             }
         }
         
-        stage('🔨 Build & Tests') {
+        stage('🔨 Build & Tests AVEC H2') {
             steps {
                 sh '''
-                    echo "🏗️  Construction du projet..."
-                    mvn clean verify
+                    echo "🧪 Exécution des tests avec H2 (in-memory)..."
+                    
+                    # FORCER l'utilisation de H2 pour les tests
+                    mvn clean verify \
+                      -Dspring.datasource.url=jdbc:h2:mem:testdb \
+                      -Dspring.datasource.username=sa \
+                      -Dspring.datasource.password= \
+                      -Dspring.jpa.database-platform=org.hibernate.dialect.H2Dialect \
+                      -DskipTests=false
+                    
+                    echo "✅ Tests terminés."
+                    echo "📊 Rapport JaCoCo généré :"
+                    find target/ -name "jacoco.xml" -o -name "jacoco.exec" | xargs ls -la 2>/dev/null || true
                 '''
             }
         }
@@ -28,15 +38,13 @@ pipeline {
                 script {
                     echo "🚀 Lancement de l'analyse SonarQube..."
                     
-                    withCredentials([string(credentialsId: 'Jenkins-token', variable: 'SONAR_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'jenkins-token', variable: 'SONAR_TOKEN')]) {
                         sh """
-                            mvn sonar:sonar \\
-                                -Dsonar.projectKey=${SONAR_PROJECT_KEY} \\
-                                -Dsonar.host.url=${SONAR_HOST_URL} \\
-                                -Dsonar.login=${SONAR_TOKEN} \\
-                                -Dsonar.sources=src/main/java \\
-                                -Dsonar.java.binaries=target/classes \\
-                                -Dsonar.java.libraries=target/*.jar
+                            mvn sonar:sonar \
+                                -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                                -Dsonar.host.url=${SONAR_HOST_URL} \
+                                -Dsonar.login=${SONAR_TOKEN} \
+                                -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
                         """
                     }
                 }
@@ -49,20 +57,26 @@ pipeline {
             echo """
             ✅ ANALYSE SONARQUBE RÉUSSIE !
             ==============================
-            📊 Résultats disponibles sur : ${SONAR_HOST_URL}
-            🔍 Projet analysé : "${SONAR_PROJECT_KEY}"
+            📊 Coverage : Maintenant visible dans SonarQube
+            🔗 Accédez à : ${SONAR_HOST_URL}
+            📋 Projet : "${SONAR_PROJECT_KEY}"
             
-            📋 Métriques à vérifier (comme demandé dans le TP) :
-            1. Duplications de code (%)
-            2. Bugs (défauts fonctionnels)
-            3. Vulnerabilities (failles de sécurité)
-            4. Security Hotspots (zones à vérifier)
-            5. Code Smells (mauvaises pratiques)
-            6. Coverage (couverture de tests)
+            Objectif TP : Coverage > 80%
             """
         }
         failure {
-            echo "❌ L'analyse SonarQube a échoué"
+            echo "❌ Échec de l'analyse"
+            sh '''
+                echo "=== TROUBLESHOOTING ==="
+                echo "1. Fichiers JaCoCo :"
+                find . -name "jacoco.*" -type f 2>/dev/null | xargs ls -la || echo "Aucun"
+                echo ""
+                echo "2. Résumé tests :"
+                cat target/surefire-reports/*.txt 2>/dev/null | grep -A5 -B5 "Tests run:" || echo "Pas de rapport"
+                echo ""
+                echo "3. SonarQube accessible ?"
+                curl -s -o /dev/null -w "%{http_code}" http://localhost:9000 || echo "curl échoué"
+            '''
         }
     }
 }
