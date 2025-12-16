@@ -1,18 +1,18 @@
 package tn.esprit.studentmanagement.services;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import tn.esprit.studentmanagement.repositories.EnrollmentRepository;
 import tn.esprit.studentmanagement.entities.Enrollment;
+import tn.esprit.studentmanagement.exceptions.EnrollmentNotFoundException;
+import tn.esprit.studentmanagement.repositories.EnrollmentRepository;
+
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class EnrollmentService implements IEnrollment {
 
     private final EnrollmentRepository enrollmentRepository;
 
-    @Autowired
+    // ✅ Injection par constructeur (déjà correct)
     public EnrollmentService(EnrollmentRepository enrollmentRepository) {
         this.enrollmentRepository = enrollmentRepository;
     }
@@ -24,12 +24,11 @@ public class EnrollmentService implements IEnrollment {
 
     @Override
     public Enrollment getEnrollmentById(Long idEnrollment) {
-        Optional<Enrollment> enrollment = enrollmentRepository.findById(idEnrollment);
-        if (enrollment.isPresent()) {
-            return enrollment.get();
-        } else {
-            throw new RuntimeException("Enrollment not found");
-        }
+        // ✅ Exception spécifique au lieu de RuntimeException
+        return enrollmentRepository.findById(idEnrollment)
+                .orElseThrow(() -> new EnrollmentNotFoundException(
+                        "Enrollment not found with id: " + idEnrollment
+                ));
     }
 
     @Override
@@ -41,4 +40,4 @@ public class EnrollmentService implements IEnrollment {
     public void deleteEnrollment(Long idEnrollment) {
         enrollmentRepository.deleteById(idEnrollment);
     }
-} 
+}
