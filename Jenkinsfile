@@ -7,30 +7,38 @@ pipeline {
     }
     
     stages {
+        // Optionnel : Nettoyage pour éviter les erreurs de permission précédentes
+        stage('🧹 Nettoyage Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
         stage('📥 Récupération Git') {
             steps {
                 git branch: 'main', url: 'https://github.com/YacoubiiKhalil/DevOps.git'
             }
         }
-        
-        stage('🔨 Tests Unitaires') {
+
+        stage('🔨 Tests & Rapport Couverture') {
             steps {
+                // MODIFICATION ICI :
+                // 1. On retire "-Dtest=SimpleTest" pour tester tout le projet
+                // 2. On ajoute "jacoco:report" pour générer le fichier target/site/jacoco/jacoco.xml
                 sh '''
-                    mvn clean test \
-                      -Dtest=SimpleTest \
+                    mvn clean test jacoco:report \
                       -Dspring.datasource.url=jdbc:h2:mem:testdb \
                       -Dspring.datasource.driver-class-name=org.h2.Driver
                 '''
             }
         }
-        
-        stage('🔍 Analyse SonarQube avec Token') {
+
+        stage('🔍 Analyse SonarQube') {
             steps {
                 script {
-                    // ESSAYER AVEC DIFFÉRENTS IDs DE CREDENTIALS
                     def credentialIds = ['jenkins-token', 'sonarqube-token', 'sonar-token']
                     def success = false
-                    
+
                     for (credId in credentialIds) {
                         if (!success) {
                             try {
@@ -47,13 +55,12 @@ pipeline {
                                 success = true
                                 echo "✅ Succès avec ${credId}"
                             } catch (Exception e) {
-                                echo "❌ Échec avec ${credId}: ${e.getMessage()}"
+                                echo "❌ Échec avec ${credId}"
                             }
                         }
                     }
-                    
                     if (!success) {
-                        error "Aucun credentials valide trouvé. Créez-en un avec ID 'sonarqube-token'"
+                        error "Impossible de se connecter à SonarQube avec les tokens fournis."
                     }
                 }
             }
