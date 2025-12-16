@@ -2,96 +2,43 @@ pipeline {
     agent any
     
     environment {
-        IMAGE_NAME = "yacoubikha/student-management"
-        // ⭐ UTILISE VOS VARIABLES VM
-        M2_HOME = '/opt/apache-maven-3.6.3'
-        PATH = "${M2_HOME}/bin:${env.PATH}"
-        JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
+        // ⭐ CONFIGURATION SONARQUBE
+        SONAR_HOST_URL = "http://localhost:9000"      // Lien SonarQube
+        SONAR_PROJECT_KEY = "student-management"      // Nom exact du projet
     }
     
     stages {
-        stage('📥 Clone Repository') {
+        stage('📥 Récupération Git') {
             steps {
                 git branch: 'main', url: 'https://github.com/YacoubiiKhalil/DevOps.git'
             }
         }
         
-        stage('🔨 Setup Environment') {
+        stage('🔨 Build & Tests') {
             steps {
                 sh '''
-                    echo "🔧 Configuration de l'environnement:"
-                    echo "M2_HOME: $M2_HOME"
-                    echo "JAVA_HOME: $JAVA_HOME"
-                    echo "PATH: $PATH"
-                    echo ""
-                    echo "📦 Vérification Maven:"
-                    which mvn
-                    mvn --version
-                    echo ""
-                    echo "📦 Vérification Java:"
-                    java --version
+                    echo "🏗️  Construction du projet..."
+                    mvn clean verify
                 '''
             }
         }
         
-        stage('🏗️ Build Maven') {
+        stage('🔍 Analyse SonarQube') {
             steps {
-                sh '''
-                    echo "🔨 Construction du JAR avec Maven..."
-                    mvn clean package -DskipTests
+                script {
+                    echo "🚀 Lancement de l'analyse SonarQube..."
                     
-                    echo "✅ Vérification du JAR généré:"
-                    ls -lh target/*.jar
-                    echo "Taille: $(du -h target/*.jar | cut -f1)"
-                '''
-            }
-        }
-        
-        stage('📊 Vérification Fichiers') {
-            steps {
-                sh '''
-                    echo "📁 Structure complète:"
-                    echo "Dockerfile:"
-                    cat Dockerfile
-                    echo ""
-                    echo "target/:"
-                    ls -la target/ 2>/dev/null || { echo "❌ ERREUR: target/ vide!"; exit 1; }
-                '''
-            }
-        }
-        
-        stage('🐳 Build Docker') {
-            steps {
-                sh '''
-                    echo "🔨 Construction de l'image Docker..."
-                    docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .
-                    docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${IMAGE_NAME}:latest
-                    
-                    echo "📦 Images créées:"
-                    docker images | grep ${IMAGE_NAME}
-                '''
-            }
-        }
-        
-        stage('📤 Push Docker') {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-id',
-                        passwordVariable: 'DOCKER_TOKEN',
-                        usernameVariable: 'DOCKER_USER'
-                    )
-                ]) {
-                    sh '''
-                        echo "🔐 Connexion à Docker Hub..."
-                        echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USER" --password-stdin
-                        
-                        echo "📤 Envoi des images..."
-                        docker push ${IMAGE_NAME}:${BUILD_NUMBER}
-                        docker push ${IMAGE_NAME}:latest
-                        
-                        echo "✅ Push terminé!"
-                    '''
+                    withCredentials([string(credentialsId: 'Jenkins-token', variable: 'SONAR_TOKEN')]) {
+                        sh """
+                            mvn sonar:sonar \\
+                                -Dsonar.projectKey=${SONAR_PROJECT_KEY} \\
+                                -Dsonar.host.url=${SONAR_HOST_URL} \\
+                                -Dsonar.login=${SONAR_TOKEN} \\
+                                -Dsonar.sources=src/main/java \\
+                                -Dsonar.java.binaries=target/classes \\
+                                -Dsonar.java.libraries=target/*.jar
+                        """
+                    }
                 }
             }
         }
@@ -100,27 +47,22 @@ pipeline {
     post {
         success {
             echo """
-            🎉 PIPELINE RÉUSSI !
-            ========================
-            📦 Image: ${IMAGE_NAME}
-            🏷️  Tag: ${BUILD_NUMBER} et latest
-            🔗 Docker Hub: https://hub.docker.com/r/yacoubikha/student-management
-            📊 Build: ${env.BUILD_URL}
+            ✅ ANALYSE SONARQUBE RÉUSSIE !
+            ==============================
+            📊 Résultats disponibles sur : ${SONAR_HOST_URL}
+            🔍 Projet analysé : "${SONAR_PROJECT_KEY}"
+            
+            📋 Métriques à vérifier (comme demandé dans le TP) :
+            1. Duplications de code (%)
+            2. Bugs (défauts fonctionnels)
+            3. Vulnerabilities (failles de sécurité)
+            4. Security Hotspots (zones à vérifier)
+            5. Code Smells (mauvaises pratiques)
+            6. Coverage (couverture de tests)
             """
         }
         failure {
-            echo "❌ ÉCHEC - Dernière étape en erreur"
-            sh '''
-                echo "=== DEBUG ==="
-                echo "Maven:"
-                which mvn 2>/dev/null || echo "Maven non trouvé"
-                echo ""
-                echo "Java:"
-                which java 2>/dev/null || echo "Java non trouvé"
-                echo ""
-                echo "Fichiers:"
-                find . -name "*.jar" -o -name "Dockerfile" | xargs ls -la 2>/dev/null || true
-            '''
+            echo "❌ L'analyse SonarQube a échoué"
         }
     }
 }
