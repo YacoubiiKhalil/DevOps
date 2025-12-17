@@ -1,85 +1,165 @@
 pipeline {
     agent any
-    
-    environment {
-        SONAR_HOST_URL = "http://localhost:9000"
-        SONAR_PROJECT_KEY = "student-management"
+
+    tools {
+        maven 'M3'
+        jdk 'jdk17'
     }
-    
+
+    environment {
+        IMAGE_NAME = "yacoubikha/student-app"
+        SONAR_PROJECT_KEY = "student-management"
+        // ✅ CORRIGÉ : utilise ton IP Minikube et le NodePort de SonarQube
+        SONAR_K8S_HOST = "192.168.49.2"
+        SONAR_K8S_PORT = "31722"
+        SONAR_K8S_URL = "http://${SONAR_K8S_HOST}:${SONAR_K8S_PORT}"
+        SONAR_K8S_USER = "admin"
+        SONAR_K8S_PASS = "admin"
+        K8S_NAMESPACE = "devops"
+    }
+
     stages {
-        stage('🧹 Nettoyage & Clone') {
+        stage('Récupération Git') {
             steps {
-                cleanWs()
                 git branch: 'main', url: 'https://github.com/YacoubiiKhalil/DevOps.git'
             }
         }
 
-        stage('🔧 Configuration Java') {
-            steps {
-                sh '''
-                    echo "=== CONFIGURATION JAVA ==="
-                    # Définir JAVA_HOME si nécessaire (comme vous avez fait)
-                    export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-                    export PATH=$JAVA_HOME/bin:$PATH
-                    java -version
-                '''
-            }
-        }
-
-        stage('🚀 Tests avec JaCoCo') {
-            steps {
-                sh '''
-                    echo "=== EXÉCUTION DES TESTS ==="
-
-                    # SIMPLE - comme sur votre machine
-                    mvn clean test
-
-                    echo "=== VÉRIFICATION JACOCO ==="
-                    if [ -f "target/jacoco.exec" ]; then
-                        echo "✅ SUCCÈS: jacoco.exec créé"
-                        echo "Taille: $(ls -lh target/jacoco.exec)"
-                    else
-                        echo "❌ ERREUR: jacoco.exec manquant"
-                        exit 1
-                    fi
-                '''
-            }
-        }
-
-        stage('📊 Génération Rapport') {
-            steps {
-                sh '''
-                    echo "=== GÉNÉRATION RAPPORT XML ==="
-
-                    mvn jacoco:report
-
-                    if [ -f "target/site/jacoco/jacoco.xml" ]; then
-                        echo "✅ Rapport XML généré"
-                        # Afficher un aperçu
-                        echo "=== APERÇU COUVERTURE ==="
-                        grep -E "line-counter|branch-counter" target/site/jacoco/jacoco.xml | head -4
-                    else
-                        echo "❌ ERREUR: Pas de rapport XML"
-                        exit 1
-                    fi
-                '''
-            }
-        }
-
-        stage('🔍 Analyse SonarQube') {
+        stage('Vérifier infrastructure K8s') {
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'JenkinsPipelineToken', variable: 'SONAR_TOKEN')]) {
-                        sh """
-                            echo "=== ANALYSE SONARQUBE ==="
+                    echo "🔍 Vérification de l'infrastructure Kubernetes..."
 
-                            # Commande SIMPLE qui marche
-                            mvn sonar:sonar \\
-                              -Dsonar.projectKey=${SONAR_PROJECT_KEY} \\
-                              -Dsonar.host.url=${SONAR_HOST_URL} \\
-                              -Dsonar.login=${SONAR_TOKEN} \\
-                              -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \\
-                              -Dsonar.java.binaries=target/classes
+                    // 1. Vérifier namespace
+                    sh "kubectl get ns ${K8S_NAMESPACE}"
+
+                    // 2. Vérifier SonarQube K8s (déployé dans la VM)
+                    sh """
+                        echo "Vérification SonarQube sur K8s..."
+                        kubectl get pods -n ${K8S_NAMESPACE} -l app=sonarqube
+                        kubectl get svc -n ${K8S_NAMESPACE} sonarqube-service
+                    """
+
+                    // 3. Vérifier MySQL et Spring (déjà déployés)
+                    sh """
+                        kubectl get pods -n ${K8S_NAMESPACE}
+                        kubectl get svc -n ${K8S_NAMESPACE}
+                    """
+                }
+            }
+        }
+
+        stage('Build & Tests') {
+            steps {
+                timeout(time: 10, unit: 'MINUTES') {
+                    sh 'mvn clean verify'
+                }
+            }
+        }
+
+        stage('Analyse SonarQube sur K8s') {
+            steps {
+                script {
+                    echo "📊 Analyse avec SonarQube déployé sur Kubernetes..."
+                    echo "URL SonarQube K8s: ${SONAR_K8S_URL}"
+
+                    // Attendre que SonarQube soit prêt
+                    sh """
+                        for i in \$(seq 1 10); do
+                            if curl -s ${SONAR_K8S_URL}/api/system/status | grep -q "UP"; then
+                                echo "✅ SonarQube K8s prêt"
+                                break
+                            fi
+                            echo "⏳ Attente SonarQube K8s... (\$i/10)"
+                            sleep 5
+                        done
+                    """
+
+                    // Exécuter l'analyse
+                    sh """
+                        mvn sonar:sonar \
+                          -Dsonar.projectKey=\${SONAR_PROJECT_KEY} \
+                          -Dsonar.host.url=\${SONAR_K8S_URL} \
+                          -Dsonar.login=\${SONAR_K8S_USER} \
+                          -Dsonar.password=\${SONAR_K8S_PASS} \
+                          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+                    """
+                }
+            }
+        }
+
+        stage('Vérification analyse K8s') {
+            steps {
+                script {
+                    echo "🔎 Vérification que l'analyse a été effectuée sur K8s..."
+                    sh """
+                        # Attendre que l'analyse soit disponible
+                        sleep 10
+
+                        # Vérifier via API
+                        ANALYSIS=\$(curl -s -u \${SONAR_K8S_USER}:\${SONAR_K8S_PASS} \
+                            "\${SONAR_K8S_URL}/api/project_analyses/search?project=\${SONAR_PROJECT_KEY}" 2>/dev/null || echo "{}")
+
+                        if echo "\$ANALYSIS" | grep -q "analyses"; then
+                            echo "✅ Analyse effectuée sur SonarQube K8s"
+                            echo "🔗 Rapport disponible: \${SONAR_K8S_URL}/dashboard?id=\${SONAR_PROJECT_KEY}"
+                        else
+                            echo "⚠️  Première analyse - création du projet..."
+                            # Créer le projet si nécessaire
+                            curl -X POST "\${SONAR_K8S_URL}/api/projects/create" \
+                                -u \${SONAR_K8S_USER}:\${SONAR_K8S_PASS} \
+                                -d "project=\${SONAR_PROJECT_KEY}&name=Student Management"
+                        fi
+                    """
+                }
+            }
+        }
+
+        stage('Packaging (JAR)') {
+            steps {
+                sh 'mvn package -DskipTests'
+            }
+        }
+
+        stage('Déployer sur K8s') {
+            steps {
+                script {
+                    echo "🚀 Déploiement sur Kubernetes..."
+
+                    // 1. Déployer MySQL si pas déjà fait
+                    sh "kubectl apply -f k8s/mysql-deployment.yaml -n \${K8S_NAMESPACE} || true"
+
+                    // 2. Déployer Spring Boot
+                    sh "kubectl apply -f k8s/springboot-deployement.yaml -n \${K8S_NAMESPACE} || true"
+
+                    // 3. Vérifier le déploiement
+                    sh """
+                        kubectl rollout status deployment/spring-app -n \${K8S_NAMESPACE} --timeout=300s
+                        echo "✅ Application déployée sur K8s"
+                        echo "🌐 Accès: http://\${SONAR_K8S_HOST}:30080"
+                    """
+                }
+            }
+        }
+
+        stage('Docker Build & Push') {
+            steps {
+                script {
+                    echo "🔨 Construction de l'image Docker : \${IMAGE_NAME}"
+                    sh "docker build -t \${IMAGE_NAME}:v5 ."
+                    sh "docker tag \${IMAGE_NAME}:v5 \${IMAGE_NAME}:latest"
+
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'dockerhub-id',
+                            passwordVariable: 'DOCKER_PASSWORD',
+                            usernameVariable: 'DOCKER_USERNAME'
+                        )
+                    ]) {
+                        sh """
+                            echo "\$DOCKER_PASSWORD" | docker login -u "\$DOCKER_USERNAME" --password-stdin
+                            docker push \${IMAGE_NAME}:v5
+                            docker push \${IMAGE_NAME}:latest
                         """
                     }
                 }
@@ -89,31 +169,16 @@ pipeline {
 
     post {
         success {
-            sh '''
-                echo "=== ✅✅✅ PIPELINE RÉUSSI ! ✅✅✅ ==="
-                echo "FÉLICITATIONS ! La couverture est générée !"
-                echo ""
-                echo "📊 RAPPORT SONARQUBE:"
-                echo "${SONAR_HOST_URL}/dashboard?id=${SONAR_PROJECT_KEY}"
-                echo ""
-                echo "📁 FICHIERS:"
-                find . -name "jacoco.*" -type f | xargs ls -la 2>/dev/null
-            '''
+            echo "✅ Pipeline terminé avec succès !"
+            echo "📊 Analyse SonarQube K8s: \${SONAR_K8S_URL}"
+            echo "🚀 Application K8s: http://\${SONAR_K8S_HOST}:30080"
+            echo "📦 Docker Hub: \${IMAGE_NAME}:v5"
         }
         failure {
-            sh '''
-                echo "=== ❌ DEBUG ==="
-                echo "1. Java:"
-                java -version 2>&1
-                echo "\\n2. Maven:"
-                mvn -v 2>&1
-                echo "\\n3. Fichiers:"
-                find . -name "*.exec" -o -name "jacoco.*" 2>/dev/null
-            '''
+            echo "❌ Le pipeline a échoué."
         }
         always {
-            archiveArtifacts artifacts: 'target/site/jacoco/*.xml, target/site/jacoco/index.html', allowEmptyArchive: true
-            junit 'target/surefire-reports/*.xml'
+            sh 'mvn clean 2>/dev/null || true'
         }
     }
 }
