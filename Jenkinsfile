@@ -2,14 +2,14 @@ pipeline {
     agent any
 
     tools {
-        maven 'M3'
+        maven 'M2'    // corrigé : M2 au lieu de M3
         jdk 'jdk17'
     }
 
     environment {
         IMAGE_NAME = "yacoubikha/student-app"
         SONAR_PROJECT_KEY = "student-management"
-        // ✅ CORRIGÉ : utilise ton IP Minikube et le NodePort de SonarQube
+        // ✅ IP Minikube + NodePort SonarQube
         SONAR_K8S_HOST = "192.168.49.2"
         SONAR_K8S_PORT = "31722"
         SONAR_K8S_URL = "http://${SONAR_K8S_HOST}:${SONAR_K8S_PORT}"
@@ -29,18 +29,12 @@ pipeline {
             steps {
                 script {
                     echo "🔍 Vérification de l'infrastructure Kubernetes..."
-
-                    // 1. Vérifier namespace
                     sh "kubectl get ns ${K8S_NAMESPACE}"
-
-                    // 2. Vérifier SonarQube K8s (déployé dans la VM)
                     sh """
                         echo "Vérification SonarQube sur K8s..."
                         kubectl get pods -n ${K8S_NAMESPACE} -l app=sonarqube
                         kubectl get svc -n ${K8S_NAMESPACE} sonarqube-service
                     """
-
-                    // 3. Vérifier MySQL et Spring (déjà déployés)
                     sh """
                         kubectl get pods -n ${K8S_NAMESPACE}
                         kubectl get svc -n ${K8S_NAMESPACE}
@@ -60,10 +54,8 @@ pipeline {
         stage('Analyse SonarQube sur K8s') {
             steps {
                 script {
-                    echo "📊 Analyse avec SonarQube déployé sur Kubernetes..."
+                    echo "📊 Analyse avec SonarQube sur Kubernetes..."
                     echo "URL SonarQube K8s: ${SONAR_K8S_URL}"
-
-                    // Attendre que SonarQube soit prêt
                     sh """
                         for i in \$(seq 1 10); do
                             if curl -s ${SONAR_K8S_URL}/api/system/status | grep -q "UP"; then
@@ -74,8 +66,6 @@ pipeline {
                             sleep 5
                         done
                     """
-
-                    // Exécuter l'analyse
                     sh """
                         mvn sonar:sonar \
                           -Dsonar.projectKey=\${SONAR_PROJECT_KEY} \
@@ -93,19 +83,14 @@ pipeline {
                 script {
                     echo "🔎 Vérification que l'analyse a été effectuée sur K8s..."
                     sh """
-                        # Attendre que l'analyse soit disponible
                         sleep 10
-
-                        # Vérifier via API
                         ANALYSIS=\$(curl -s -u \${SONAR_K8S_USER}:\${SONAR_K8S_PASS} \
                             "\${SONAR_K8S_URL}/api/project_analyses/search?project=\${SONAR_PROJECT_KEY}" 2>/dev/null || echo "{}")
-
                         if echo "\$ANALYSIS" | grep -q "analyses"; then
                             echo "✅ Analyse effectuée sur SonarQube K8s"
-                            echo "🔗 Rapport disponible: \${SONAR_K8S_URL}/dashboard?id=\${SONAR_PROJECT_KEY}"
+                            echo "🔗 Rapport: \${SONAR_K8S_URL}/dashboard?id=\${SONAR_PROJECT_KEY}"
                         else
-                            echo "⚠️  Première analyse - création du projet..."
-                            # Créer le projet si nécessaire
+                            echo "⚠️ Première analyse - création du projet..."
                             curl -X POST "\${SONAR_K8S_URL}/api/projects/create" \
                                 -u \${SONAR_K8S_USER}:\${SONAR_K8S_PASS} \
                                 -d "project=\${SONAR_PROJECT_KEY}&name=Student Management"
@@ -125,14 +110,8 @@ pipeline {
             steps {
                 script {
                     echo "🚀 Déploiement sur Kubernetes..."
-
-                    // 1. Déployer MySQL si pas déjà fait
                     sh "kubectl apply -f k8s/mysql-deployment.yaml -n \${K8S_NAMESPACE} || true"
-
-                    // 2. Déployer Spring Boot
                     sh "kubectl apply -f k8s/springboot-deployement.yaml -n \${K8S_NAMESPACE} || true"
-
-                    // 3. Vérifier le déploiement
                     sh """
                         kubectl rollout status deployment/spring-app -n \${K8S_NAMESPACE} --timeout=300s
                         echo "✅ Application déployée sur K8s"
