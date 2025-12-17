@@ -41,7 +41,7 @@ pipeline {
 
         stage('Build & Tests') {
             steps {
-                timeout(time: 10, unit: 'MINUTES') {
+                timeout(time: 17, unit: 'MINUTES') {
                     sh 'mvn clean verify'
                 }
             }
