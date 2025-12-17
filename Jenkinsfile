@@ -1,11 +1,7 @@
 pipeline {
     agent any
 
-    // Outils configurés dans Jenkins (noms par défaux ou ceux que tu as)
-    tools {
-        maven 'M2'      // Nom dans Jenkins → Tools → Maven
-        jdk 'JDK'       // Nom dans Jenkins → Tools → JDK
-    }
+    // SUPPRIME le bloc "tools" — utilise les commandes système
 
     environment {
         IMAGE_NAME = "yacoubikha/student-app"
