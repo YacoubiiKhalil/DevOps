@@ -1,15 +1,15 @@
 pipeline {
     agent any
 
+    // Outils configurés dans Jenkins (noms par défaux ou ceux que tu as)
     tools {
-        maven 'M2'    // corrigé : M2 au lieu de M3
-        jdk 'jdk17'
+        maven 'M2'      // Nom dans Jenkins → Tools → Maven
+        jdk 'JDK'       // Nom dans Jenkins → Tools → JDK
     }
 
     environment {
         IMAGE_NAME = "yacoubikha/student-app"
         SONAR_PROJECT_KEY = "student-management"
-        // ✅ IP Minikube + NodePort SonarQube
         SONAR_K8S_HOST = "192.168.49.2"
         SONAR_K8S_PORT = "31722"
         SONAR_K8S_URL = "http://${SONAR_K8S_HOST}:${SONAR_K8S_PORT}"
@@ -54,7 +54,7 @@ pipeline {
         stage('Analyse SonarQube sur K8s') {
             steps {
                 script {
-                    echo "📊 Analyse avec SonarQube sur Kubernetes..."
+                    echo "📊 Analyse avec SonarQube déployé sur Kubernetes..."
                     echo "URL SonarQube K8s: ${SONAR_K8S_URL}"
                     sh """
                         for i in \$(seq 1 10); do
@@ -88,9 +88,9 @@ pipeline {
                             "\${SONAR_K8S_URL}/api/project_analyses/search?project=\${SONAR_PROJECT_KEY}" 2>/dev/null || echo "{}")
                         if echo "\$ANALYSIS" | grep -q "analyses"; then
                             echo "✅ Analyse effectuée sur SonarQube K8s"
-                            echo "🔗 Rapport: \${SONAR_K8S_URL}/dashboard?id=\${SONAR_PROJECT_KEY}"
+                            echo "🔗 Rapport disponible: \${SONAR_K8S_URL}/dashboard?id=\${SONAR_PROJECT_KEY}"
                         else
-                            echo "⚠️ Première analyse - création du projet..."
+                            echo "⚠️  Première analyse - création du projet..."
                             curl -X POST "\${SONAR_K8S_URL}/api/projects/create" \
                                 -u \${SONAR_K8S_USER}:\${SONAR_K8S_PASS} \
                                 -d "project=\${SONAR_PROJECT_KEY}&name=Student Management"
@@ -127,7 +127,6 @@ pipeline {
                     echo "🔨 Construction de l'image Docker : \${IMAGE_NAME}"
                     sh "docker build -t \${IMAGE_NAME}:v5 ."
                     sh "docker tag \${IMAGE_NAME}:v5 \${IMAGE_NAME}:latest"
-
                     withCredentials([
                         usernamePassword(
                             credentialsId: 'dockerhub-id',
